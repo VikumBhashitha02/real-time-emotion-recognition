@@ -1,9 +1,8 @@
 import cv2
 from deepface import DeepFace
 
-# Use DirectShow backend for Windows webcams
+# Open webcam
 cap = cv2.VideoCapture(0)
-
 if not cap.isOpened():
     print("Error: Could not open webcam.")
     exit()
@@ -17,36 +16,56 @@ while True:
         break
 
     try:
-        # Analyze the full frame for better face detection
-        result = DeepFace.analyze(frame, actions=["emotion"], enforce_detection=False)
+        # Analyze all faces in the frame for emotion, age, and gender
+        results = DeepFace.analyze(
+            frame, actions=["emotion", "age", "gender"], enforce_detection=False
+        )
 
-        # DeepFace.analyze may return a list if multiple faces are detected
-        if isinstance(result, list):
-            result = result[0]
+        # DeepFace may return a list if multiple faces are found
+        if isinstance(results, dict):
+            results = [results]
 
-        if isinstance(result, dict) and "dominant_emotion" in result:
-            emotion = result["dominant_emotion"]
-            confidence = result["emotion"][emotion]
+        for idx, res in enumerate(results):
+            # Bounding box info (may not exist if enforce_detection=False and no face found)
+            region = res.get("region", {})
+            x, y, w, h = (
+                region.get("x", 0),
+                region.get("y", 0),
+                region.get("w", 0),
+                region.get("h", 0),
+            )
 
-            # Debug: print detected emotion in console
-            print(f"Detected: {emotion} ({confidence:.2f}%)")
+            # Draw a rectangle around the face
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-            # Display on frame
+            # Extract predictions
+            emotion = res.get("dominant_emotion", "Unknown")
+            gender = res.get("dominant_gender", "Unknown")
+            age = res.get("age", "N/A")
+
+            # Text to display: Gender | Age | Emotion
+            text = f"{gender}, {age} yrs, {emotion}"
+
+            # Put the text above the rectangle
             cv2.putText(
                 frame,
-                f"{emotion} ({int(confidence)}%)",
-                (50, 50),
+                text,
+                (x, y - 10 if y - 10 > 20 else y + h + 20),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                1,
+                0.7,
                 (0, 255, 0),
                 2,
             )
+
+            # Debug console print
+            print(f"Person {idx}: {gender}, {age} yrs, {emotion}")
+
     except Exception as e:
         print("Skipping frame:", e)
 
-    # Resize frame for faster display
+    # Resize frame for smoother display
     display_frame = cv2.resize(frame, (640, 480))
-    cv2.imshow("AI Emotion Detector", display_frame)
+    cv2.imshow("AI Multi-Face Detector", display_frame)
 
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
